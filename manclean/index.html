@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://mloyola99.app.n8n.cloud; form-action 'none'; base-uri 'self'; object-src 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>MANCLEAN Services · Limpieza profesional</title>
+<meta name="description" content="Limpieza profesional de muebles, colchones, alfombras y sillas. Solicita tu cotización gratis.">
+<link rel="icon" href="favicon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <img src="logo.jpg" alt="MANCLEAN Services" class="top-logo" width="150" height="111">
+  <a href="#cotizar" class="btn btn-sm">Cotizar</a>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">✦ MANCLEAN SERVICES</p>
+      <h1>Tus muebles como nuevos, <span>sin salir de casa</span></h1>
+      <p class="lead">Limpieza profesional a domicilio de muebles, colchones, alfombras y sillas. Elimina manchas, ácaros y malos olores.</p>
+      <button type="button" class="btn btn-lg" id="abrir-cotizacion">Solicitar cotización gratis</button>
+    </div>
+    <img src="logo.jpg" alt="" class="hero-logo" width="492" height="365">
+  </section>
+
+  <section class="servicios" aria-label="Servicios">
+    <button type="button" class="card" data-servicio="Limpieza de muebles"><span class="num">01</span><h3>Limpieza de muebles</h3><p>Sofás, sillones y seccionales de tela o cuero.</p></button>
+    <button type="button" class="card" data-servicio="Limpieza de colchones"><span class="num">02</span><h3>Limpieza de colchones</h3><p>Desinfección profunda contra ácaros y manchas.</p></button>
+    <button type="button" class="card" data-servicio="Limpieza de alfombras"><span class="num">03</span><h3>Limpieza de alfombras</h3><p>Lavado de alfombras y tapetes de todo tamaño.</p></button>
+    <button type="button" class="card" data-servicio="Limpieza de sillas"><span class="num">04</span><h3>Limpieza de sillas</h3><p>Sillas de comedor, oficina y tapizadas.</p></button>
+  </section>
+
+  <section class="form-wrap" id="cotizar">
+    <form id="form" novalidate>
+      <h2>Solicita tu cotización</h2>
+      <p class="sub">Elige el servicio y déjanos tus datos. Te contactaremos a la brevedad.</p>
+
+      <fieldset class="opciones">
+        <legend>1. ¿Qué servicio necesitas? *</legend>
+        <label><input type="radio" name="servicio" value="Limpieza de muebles" required> Limpieza de muebles</label>
+        <label><input type="radio" name="servicio" value="Limpieza de colchones"> Limpieza de colchones</label>
+        <label><input type="radio" name="servicio" value="Limpieza de alfombras"> Limpieza de alfombras</label>
+        <label><input type="radio" name="servicio" value="Limpieza de sillas"> Limpieza de sillas</label>
+      </fieldset>
+
+      <p class="paso">2. Tus datos</p>
+      <div class="grid">
+        <label>Nombre completo *<input name="nombre" required minlength="2" maxlength="80" autocomplete="name"></label>
+        <label>Correo electrónico *<input name="correo" type="email" required maxlength="120" autocomplete="email"></label>
+        <label>Teléfono / WhatsApp *<input name="telefono" type="tel" required pattern="\+?[0-9 ()\-]{7,20}" maxlength="20" autocomplete="tel"></label>
+        <label>Distrito<input name="distrito" maxlength="60" autocomplete="address-level2"></label>
+      </div>
+      <label>Detalle (opcional)<textarea name="mensaje" rows="3" maxlength="500" placeholder="Ej.: sofá de 3 cuerpos con manchas de café"></textarea></label>
+
+      <div class="hp" aria-hidden="true"><label>Sitio web<input name="website" tabindex="-1" autocomplete="off"></label></div>
+
+      <label class="check"><input type="checkbox" name="consentimiento" required> Acepto que MANCLEAN use mis datos solo para contactarme sobre esta cotización.</label>
+
+      <button type="submit" class="btn btn-lg btn-full" id="enviar">Solicitar cotización</button>
+      <p class="estado" id="estado" role="status" aria-live="polite"></p>
+    </form>
+
+    <div class="ok" id="ok" hidden>
+      <div class="ok-icon">✓</div>
+      <h2>¡Solicitud recibida!</h2>
+      <p>Te enviamos un correo de confirmación. Tu número de solicitud es <b id="ok-id"></b>.</p>
+      <p>Nos pondremos en contacto contigo muy pronto.</p>
+    </div>
+  </section>
+</main>
+
+<footer>© MANCLEAN Services · Limpieza profesional</footer>
+<script src="app.js"></script>
+</body>
+</html>

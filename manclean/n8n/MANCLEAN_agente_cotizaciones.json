@@ -1,0 +1,426 @@
+{
+  "name": "MANCLEAN · Agente de cotizaciones web",
+  "nodes": [
+    {
+      "id": "472945cb-bec1-4797-b914-d9f0ad83f968",
+      "name": "Recibir solicitud web",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        96
+      ],
+      "webhookId": "7bd21da8-3f4a-4744-b97f-7e0ccdaf9bf6",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "manclean-cotizacion",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://mloyola99-lang.github.io",
+          "ignoreBots": true
+        }
+      }
+    },
+    {
+      "id": "06925ecb-e6db-46ea-b1af-6da5b1428103",
+      "name": "Validar solicitud",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        96
+      ],
+      "parameters": {
+        "jsCode": "// MANCLEAN · Validación y sanitización de la solicitud (seguridad básica)\nconst SERVICIOS = ['Limpieza de muebles', 'Limpieza de colchones', 'Limpieza de alfombras', 'Limpieza de sillas'];\nconst req = $input.first().json;\nconst b = (req.body && typeof req.body === 'object') ? req.body : {};\nconst h = req.headers || {};\n\nconst fail = (status, error) => [{ json: { valid: false, status, error } }];\n\n// 1) Origen permitido (además del CORS del webhook)\nconst ORIGENES = ['https://mloyola99-lang.github.io'];\nconst origin = String(h.origin || '');\nif (origin && !ORIGENES.includes(origin)) return fail(403, 'Origen no permitido');\n\n// 2) Anti-bots: honeypot y tiempo mínimo de llenado\nif (String(b.website || '').trim() !== '') return fail(400, 'Solicitud inválida');\nconst t = Number(b.ts || 0);\nif (t && Date.now() - t < 3000) return fail(400, 'Solicitud inválida');\n\n// 3) Limpieza: recorta, quita caracteres de control y limita longitud\nconst clean = (v, max) => String(v ?? '').replace(/[\\u0000-\\u001F\\u007F]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, max);\nconst d = {\n  servicio: clean(b.servicio, 40),\n  nombre: clean(b.nombre, 80),\n  correo: clean(b.correo, 120).toLowerCase(),\n  telefono: clean(b.telefono, 20),\n  distrito: clean(b.distrito, 60),\n  mensaje: clean(b.mensaje, 500),\n};\n\n// 4) Validación de negocio\nif (!SERVICIOS.includes(d.servicio)) return fail(400, 'Selecciona un servicio válido');\nif (d.nombre.length < 2 || !/^[\\p{L} .'-]+$/u.test(d.nombre)) return fail(400, 'Nombre inválido');\nif (!/^[^\\s@]+@[^\\s@]+\\.[a-z]{2,}$/i.test(d.correo)) return fail(400, 'Correo inválido');\nif (!/^\\+?[0-9 ()-]{7,20}$/.test(d.telefono)) return fail(400, 'Teléfono inválido');\nif (b.consentimiento !== true && b.consentimiento !== 'true') return fail(400, 'Debes aceptar el tratamiento de datos');\n\n// 5) Límite de frecuencia: máx. 3 solicitudes por correo y 10 por IP cada hora\nconst ip = String(h['x-forwarded-for'] || h['x-real-ip'] || '').split(',')[0].trim() || 'sin-ip';\nconst store = $getWorkflowStaticData('global');\nconst now = Date.now(), HORA = 3600000;\nstore.rl = store.rl || {};\nfor (const k of Object.keys(store.rl)) { store.rl[k] = store.rl[k].filter(x => now - x < HORA); if (!store.rl[k].length) delete store.rl[k]; }\nconst kc = 'c:' + d.correo, ki = 'i:' + ip;\nif ((store.rl[kc] || []).length >= 3 || (store.rl[ki] || []).length >= 10) return fail(429, 'Demasiadas solicitudes, intenta más tarde');\nstore.rl[kc] = [...(store.rl[kc] || []), now];\nstore.rl[ki] = [...(store.rl[ki] || []), now];\n\n// 6) Versiones seguras: para HTML (correos) y para hoja (evita inyección de fórmulas)\nconst esc = s => s.replace(/[&<>\"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst cell = s => s; // la hoja se escribe en modo RAW: nunca evalúa fórmulas\nconst fecha = $now.setZone('America/Lima');\nconst id = 'MC-' + fecha.toFormat('yyMMdd') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\n\nreturn [{ json: {\n  valid: true, status: 200, id,\n  fecha: fecha.toFormat('yyyy-LL-dd HH:mm'),\n  ...Object.fromEntries(Object.entries(d).map(([k, v]) => [k, cell(v)])),\n  correo: d.correo,\n  html: Object.fromEntries(Object.entries(d).map(([k, v]) => [k, esc(v || '-')])),\n  primerNombre: esc(d.nombre.split(' ')[0]),\n  origen: origin || 'directo',\n} }];\n"
+      }
+    },
+    {
+      "id": "4a4f9592-af48-4938-a9e5-75d56ed4a082",
+      "name": "¿Solicitud válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "325e886a-a7fb-4b56-b2d2-9e261a7634d3",
+      "name": "Registrar en BASE DE DATOS CLIENTES MANCLEAN",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        720,
+        128
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "13Tl2bDDxd8H-dKvlIFBa51gcNOvwBS3PX0zUA-_ImTo"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Clientes"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID Solicitud": "={{ $json.id }}",
+            "Fecha": "={{ $json.fecha }}",
+            "Servicio": "={{ $json.servicio }}",
+            "Nombre": "={{ $json.nombre }}",
+            "Correo": "={{ $json.correo }}",
+            "Telefono": "={{ $json.telefono }}",
+            "Distrito": "={{ $json.distrito }}",
+            "Mensaje": "={{ $json.mensaje }}",
+            "Estado": "Nuevo",
+            "Origen": "={{ $json.origen }}"
+          },
+          "schema": [
+            {
+              "id": "ID Solicitud",
+              "displayName": "ID Solicitud",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Servicio",
+              "displayName": "Servicio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nombre",
+              "displayName": "Nombre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Correo",
+              "displayName": "Correo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Telefono",
+              "displayName": "Telefono",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Distrito",
+              "displayName": "Distrito",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Mensaje",
+              "displayName": "Mensaje",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Origen",
+              "displayName": "Origen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "FFfmuh86Yv24BG1l",
+          "name": "Google Sheets account 4"
+        }
+      }
+    },
+    {
+      "id": "a4920d28-cc8b-4266-a0d4-14016ced563b",
+      "name": "Promomail al cliente",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        944,
+        128
+      ],
+      "onError": "continueRegularOutput",
+      "webhookId": "a6f0fe35-bd6c-4ddd-90b3-dca57e7b4e63",
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Validar solicitud').item.json.correo }}",
+        "subject": "=✨ Recibimos tu solicitud {{ $('Validar solicitud').item.json.id }} | MANCLEAN SERVICES",
+        "emailType": "html",
+        "message": "=<div style=\"margin:0;padding:0;background:#EAF6FD;font-family:Arial,Helvetica,sans-serif;\">\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#EAF6FD;padding:28px 0;\"><tr><td align=\"center\">\n<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%;background:#FFFFFF;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(11,79,138,.12);\">\n<tr><td style=\"background:#FFFFFF;padding:26px 24px 10px;text-align:center;\"><img src=\"https://mloyola99-lang.github.io/centinela-reporte-diario/manclean/logo.jpg\" width=\"190\" alt=\"MANCLEAN SERVICES\" style=\"display:inline-block;border:0;max-width:190px;\"></td></tr>\n<tr><td style=\"background:linear-gradient(90deg,#0B4F8A,#1E88C8,#5BC8F0);background-color:#1E88C8;height:6px;font-size:0;line-height:0;\">&nbsp;</td></tr>\n<tr><td style=\"background:#0B4F8A;padding:26px 32px;text-align:center;\">\n<div style=\"font-size:12px;letter-spacing:3px;color:#9FE1FA;font-weight:bold;\">MANCLEAN SERVICES</div>\n<div style=\"font-size:26px;line-height:1.25;color:#FFFFFF;font-weight:bold;margin-top:8px;\">¡Recibimos tu solicitud!</div></td></tr>\n<tr><td style=\"padding:32px;color:#0F2A44;\">\n<p style=\"font-size:17px;margin:0 0 14px;\">Hola <b>{{ $('Validar solicitud').item.json.primerNombre }}</b>,</p>\n<p style=\"font-size:15px;line-height:1.65;margin:0 0 18px;\">Gracias por confiar en <b style=\"color:#0B4F8A;\">MANCLEAN SERVICES</b>. Hemos recibido tu solicitud de cotización y uno de nuestros asesores <b>se pondrá en contacto contigo muy pronto</b>.</p>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#EAF6FD;border-left:5px solid #2FB2E8;border-radius:8px;\">\n<tr><td style=\"padding:16px 18px;font-size:14px;line-height:1.8;color:#0F2A44;\">\n<div style=\"font-size:11px;letter-spacing:2px;color:#1E88C8;font-weight:bold;\">RESUMEN DE TU SOLICITUD</div>\n<b>N.º de solicitud:</b> {{ $('Validar solicitud').item.json.id }}<br>\n<b>Servicio:</b> {{ $('Validar solicitud').item.json.html.servicio }}<br>\n<b>Teléfono:</b> {{ $('Validar solicitud').item.json.html.telefono }}<br>\n<b>Distrito:</b> {{ $('Validar solicitud').item.json.html.distrito }}</td></tr></table>\n<p style=\"font-size:15px;line-height:1.65;margin:22px 0 6px;\">Dejaremos tus muebles, colchones, alfombras y sillas como nuevos.</p>\n<p style=\"font-size:15px;margin:22px 0 0;\">Un abrazo,<br><b style=\"color:#0B4F8A;\">Equipo MANCLEAN SERVICES</b></p></td></tr>\n<tr><td style=\"background:#0B4F8A;color:#CFEFFC;text-align:center;font-size:12px;line-height:1.6;padding:18px;\">✦ MANCLEAN SERVICES · Limpieza profesional ✦<br>Este es un mensaje automático. Si no solicitaste esta cotización, ignora este correo.</td></tr>\n</table></td></tr></table></div>\n",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "MANCLEAN SERVICES"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "6pc52a2aQSu9h4eu",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "id": "e813ef5a-e6b0-4970-8888-6a8d252682af",
+      "name": "Notificar nuevo requerimiento",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1168,
+        128
+      ],
+      "onError": "continueRegularOutput",
+      "webhookId": "0def8a97-a4f9-4888-a37b-3252b6ce625e",
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "mloyola99@gmail.com",
+        "subject": "=🔔 Nuevo requerimiento MANCLEAN: {{ $('Validar solicitud').item.json.servicio }} · {{ $('Validar solicitud').item.json.nombre }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:620px;border:1px solid #CFE8F7;border-radius:10px;overflow:hidden;\">\n<div style=\"background:#0B4F8A;color:#FFFFFF;padding:16px 20px;font-size:19px;font-weight:bold;\">🔔 Nuevo requerimiento · MANCLEAN</div>\n<div style=\"background:#5BC8F0;height:4px;font-size:0;\">&nbsp;</div>\n<table cellpadding=\"9\" style=\"width:100%;border-collapse:collapse;font-size:14px;color:#0F2A44;\">\n<tr style=\"background:#EAF6FD;\"><td style=\"width:150px;\"><b>N.º solicitud</b></td><td>{{ $('Validar solicitud').item.json.id }}</td></tr>\n<tr><td><b>Fecha (Lima)</b></td><td>{{ $('Validar solicitud').item.json.fecha }}</td></tr>\n<tr style=\"background:#EAF6FD;\"><td><b>Servicio</b></td><td><b style=\"color:#0B4F8A;\">{{ $('Validar solicitud').item.json.html.servicio }}</b></td></tr>\n<tr><td><b>Nombre</b></td><td>{{ $('Validar solicitud').item.json.html.nombre }}</td></tr>\n<tr style=\"background:#EAF6FD;\"><td><b>Correo</b></td><td>{{ $('Validar solicitud').item.json.html.correo }}</td></tr>\n<tr><td><b>Teléfono</b></td><td>{{ $('Validar solicitud').item.json.html.telefono }}</td></tr>\n<tr style=\"background:#EAF6FD;\"><td><b>Distrito</b></td><td>{{ $('Validar solicitud').item.json.html.distrito }}</td></tr>\n<tr><td><b>Mensaje</b></td><td>{{ $('Validar solicitud').item.json.html.mensaje }}</td></tr>\n</table>\n<div style=\"background:#EAF6FD;padding:12px 20px;font-size:13px;\">Registrado en <a style=\"color:#0B4F8A;font-weight:bold;\" href=\"https://docs.google.com/spreadsheets/d/13Tl2bDDxd8H-dKvlIFBa51gcNOvwBS3PX0zUA-_ImTo/edit\">BASE DE DATOS CLIENTES MANCLEAN</a></div></div>\n",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "MANCLEAN Bot",
+          "replyTo": "={{ $('Validar solicitud').item.json.correo }}"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "6pc52a2aQSu9h4eu",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "id": "0ba1d6f5-b2dd-45f9-b1ff-22c8e712926c",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1392,
+        128
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, id: $('Validar solicitud').item.json.id }) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-Content-Type-Options",
+                "value": "nosniff"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "e8cd1004-bd8c-4b2c-833f-9f6e6b3ace9b",
+      "name": "Responder error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        720,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {
+          "responseCode": "={{ $json.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-Content-Type-Options",
+                "value": "nosniff"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "39fbdca7-a040-4f1c-b82b-d7ef8beef57b",
+      "name": "Nota seguridad",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -160
+      ],
+      "parameters": {
+        "content": "## MANCLEAN · Cotizaciones web\nPágina: https://mloyola99-lang.github.io/centinela-reporte-diario/manclean/\n\n**Seguridad:** CORS solo GitHub Pages, filtro de bots, honeypot + tiempo mínimo, lista blanca de servicios, validación y límites de longitud, escape HTML en correos, hoja en modo RAW (sin fórmulas), rate limit 3/correo y 10/IP por hora.",
+        "color": 5,
+        "width": 420,
+        "height": 200
+      }
+    }
+  ],
+  "connections": {
+    "Recibir solicitud web": {
+      "main": [
+        [
+          {
+            "node": "Validar solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar solicitud": {
+      "main": [
+        [
+          {
+            "node": "¿Solicitud válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Solicitud válida?": {
+      "main": [
+        [
+          {
+            "node": "Registrar en BASE DE DATOS CLIENTES MANCLEAN",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar en BASE DE DATOS CLIENTES MANCLEAN": {
+      "main": [
+        [
+          {
+            "node": "Promomail al cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Promomail al cliente": {
+      "main": [
+        [
+          {
+            "node": "Notificar nuevo requerimiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar nuevo requerimiento": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "instanceId": "mloyola99.app.n8n.cloud"
+  },
+  "tags": []
+}
